@@ -1,0 +1,1193 @@
+/*
+ * Copyright (c) Facebook, Inc. and its affiliates.
+ *
+ * This source code is licensed under the MIT license found in the
+ * LICENSE file in the root directory of this source tree.
+ */
+
+#include <cmath>
+#include <iostream>
+#include <sstream>
+
+#include "catch.hpp"
+
+#include "common.h"
+#include "gtn/creations.h"
+#include "gtn/functions.h"
+#include "gtn/graph.h"
+#include "gtn/rand.h"
+#include "gtn/utils.h"
+
+using namespace gtn;
+
+TEST_CASE("test scalar ops", "[functions]") {
+  auto g1 = scalarGraph(3.0);
+
+  auto result = negate(g1);
+  CHECK(result.item() == -3.0);
+
+  auto g2 = scalarGraph(4.0);
+
+  result = add(g1, g2);
+  CHECK(result.item() == 7.0);
+
+  result = subtract(g2, g1);
+  CHECK(result.item() == 1.0);
+}
+
+TEST_CASE("test project and clone", "[functions]") {
+  Graph graph =
+      loadTxt(std::stringstream("0 1\n"
+                                "3 4\n"
+                                "0 1 0 2 2\n"
+                                "0 2 1 3 1\n"
+                                "1 2 0 1 2\n"
+                                "2 3 0 0 1\n"
+                                "2 3 1 2 1\n"
+                                "1 4 0 1 2\n"
+                                "2 4 1 1 3\n"
+                                "3 4 0 2 2\n"));
+
+  // Test clone
+  Graph cloned = clone(graph);
+  CHECK(equal(graph, cloned));
+
+  // Test projecting input
+  Graph inputExpected =
+      loadTxt(std::stringstream("0 1\n"
+                                "3 4\n"
+                                "0 1 0 0 2\n"
+                                "0 2 1 1 1\n"
+                                "1 2 0 0 2\n"
+                                "2 3 0 0 1\n"
+                                "2 3 1 1 1\n"
+                                "1 4 0 0 2\n"
+                                "2 4 1 1 3\n"
+                                "3 4 0 0 2\n"));
+  CHECK(equal(projectInput(graph), inputExpected));
+
+  // Test projecting output
+  Graph outputExpected =
+      loadTxt(std::stringstream("0 1\n"
+                                "3 4\n"
+                                "0 1 2 2 2\n"
+                                "0 2 3 3 1\n"
+                                "1 2 1 1 2\n"
+                                "2 3 0 0 1\n"
+                                "2 3 2 2 1\n"
+                                "1 4 1 1 2\n"
+                                "2 4 1 1 3\n"
+                                "3 4 2 2 2\n"));
+  CHECK(equal(projectOutput(graph), outputExpected));
+}
+
+TEST_CASE("test composition", "[functions]") {
+  {
+    // Composing with an empty graph gives an empty graph
+    Graph g1;
+    Graph g2;
+    CHECK(equal(compose(g1, g2), Graph{}));
+
+    g1.addNode(true);
+    g1.addNode();
+    g1.addArc(0, 1, 0);
+
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 1, 0);
+    g2.addArc(0, 1, 0);
+
+    CHECK(equal(compose(g1, g2), Graph{}));
+    CHECK(equal(compose(g2, g1), Graph{}));
+    CHECK(equal(intersect(g2, g1), Graph{}));
+
+    // Check singly sorted version
+    g1.arcSort(true);
+    CHECK(equal(compose(g1, g2), Graph{}));
+
+    // Check doubly sorted version
+    g2.arcSort();
+    CHECK(equal(compose(g1, g2), Graph{}));
+  }
+
+  {
+    auto g1 = linearGraph(1, 1);
+    auto g2 = linearGraph(2, 1);
+    CHECK(equal(compose(g1, g2), Graph{}));
+  }
+
+  {
+    // Self-loop in the composed graph
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 0, 0);
+    g1.addArc(0, 1, 1);
+    g1.addArc(1, 1, 2);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode();
+    g2.addNode(false, true);
+    g2.addArc(0, 1, 0);
+    g2.addArc(1, 1, 0);
+    g2.addArc(1, 2, 1);
+
+    std::stringstream in(
+        "0\n"
+        "2\n"
+        "0 1 0\n"
+        "1 1 0\n"
+        "1 2 1\n");
+    Graph expected = loadTxt(in);
+    CHECK(isomorphic(compose(g1, g2), expected));
+    CHECK(isomorphic(intersect(g1, g2), expected));
+
+    // Check singly sorted version
+    g1.arcSort(true);
+    CHECK(isomorphic(compose(g1, g2), expected));
+
+    // Check doubly sorted version
+    g2.arcSort();
+    CHECK(isomorphic(compose(g1, g2), expected));
+  }
+
+  {
+    // Loop in the composed graph
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 1, 0);
+    g1.addArc(1, 1, 1);
+    g1.addArc(1, 0, 0);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 0, 0);
+    g2.addArc(0, 1, 1);
+    g2.addArc(1, 0, 1);
+
+    std::stringstream in(
+        "0\n"
+        "2\n"
+        "0 1 0\n"
+        "1 0 0\n"
+        "1 2 1\n"
+        "2 1 1\n");
+    Graph expected = loadTxt(in);
+    CHECK(isomorphic(compose(g1, g2), expected));
+    CHECK(isomorphic(intersect(g1, g2), expected));
+
+    // Check singly sorted version
+    g1.arcSort(true);
+    CHECK(isomorphic(compose(g1, g2), expected));
+
+    // Check doubly sorted version
+    g2.arcSort();
+    CHECK(isomorphic(compose(g1, g2), expected));
+  }
+
+  {
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode();
+    g1.addNode();
+    g1.addNode();
+    g1.addNode(false, true);
+    for (int i = 0; i < g1.numNodes() - 1; i++) {
+      for (int j = 0; j < 3; j++) {
+        g1.addArc(i, i + 1, j, j, static_cast<float>(j));
+      }
+    }
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode();
+    g2.addNode(false, true);
+    g2.addArc(0, 1, 0, 0, 3.5);
+    g2.addArc(1, 1, 0, 0, 2.5);
+    g2.addArc(1, 2, 1, 1, 1.5);
+    g2.addArc(2, 2, 1, 1, 4.5);
+    std::stringstream in(
+        "0\n"
+        "6\n"
+        "0 1 0 0 3.5\n"
+        "1 2 0 0 2.5\n"
+        "1 4 1 1 2.5\n"
+        "2 3 0 0 2.5\n"
+        "2 5 1 1 2.5\n"
+        "4 5 1 1 5.5\n"
+        "3 6 1 1 2.5\n"
+        "5 6 1 1 5.5\n");
+    Graph expected = loadTxt(in);
+    CHECK(isomorphic(compose(g1, g2), expected));
+    CHECK(isomorphic(intersect(g1, g2), expected));
+
+    // Check singly sorted version
+    g1.arcSort(true);
+    CHECK(isomorphic(compose(g1, g2), expected));
+
+    // Check doubly sorted version
+    g2.arcSort();
+    CHECK(isomorphic(compose(g1, g2), expected));
+  }
+}
+
+TEST_CASE("test forward score", "[functions]") {
+
+  const float inf = std::numeric_limits<float>::infinity();
+
+  {
+    // Check score of empty graph
+    Graph g;
+    CHECK(forwardScore(g).item() == -inf);
+  }
+
+  {
+    // Non-start node with no incoming arcs
+    Graph g;
+    g.addNode(true);
+    g.addNode();
+    g.addNode(false, true);
+    g.addArc(1, 2, 0);
+    CHECK(forwardScore(g).item() == -inf);
+    g.addArc(0, 2, 0, 0, 1.0);
+    CHECK(forwardScore(g).item() == Approx(1.0));
+  }
+
+  {
+    // Disconnected graph
+    Graph g;
+    g.addNode(true);
+    g.addNode();
+    g.addNode();
+    g.addNode(false, true);
+    g.addArc(0, 1, 0);
+    g.addArc(2, 3, 0);
+    CHECK(forwardScore(g).item() == -inf);
+  }
+
+  {
+    // Handles negative infinity
+    Graph g;
+    g.addNode(true);
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, -inf);
+    g.addArc(0, 1, 1, 1, -inf);
+    CHECK(forwardScore(g).item() == -inf);
+  }
+
+  {
+    // Handles infinity
+    Graph g;
+    g.addNode(true);
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, inf);
+    g.addArc(0, 1, 1, 1, 0);
+    CHECK(forwardScore(g).item() == inf);
+  }
+
+  {
+    // Single Node
+    Graph g;
+    g.addNode(true, true);
+    CHECK(forwardScore(g).item() == 0.0);
+  }
+
+  {
+    // A simple test case
+    Graph g;
+    g.addNode(true);
+    g.addNode();
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, 1);
+    g.addArc(0, 1, 1, 1, 2);
+    g.addArc(0, 1, 2, 2, 3);
+    g.addArc(1, 2, 0, 0, 1);
+    g.addArc(1, 2, 1, 1, 2);
+    g.addArc(1, 2, 2, 2, 3);
+    CHECK(forwardScore(g).item() == Approx(6.8152));
+  }
+
+  {
+    // Handle two start nodes
+    Graph g;
+    g.addNode(true);
+    g.addNode(true);
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, -5);
+    g.addArc(0, 2, 0, 0, 1);
+    g.addArc(1, 2, 0, 0, 2);
+    float expected = std::log(std::exp(1) + std::exp(-5 + 2) + std::exp(2));
+    CHECK(forwardScore(g).item() == Approx(expected));
+  }
+
+  {
+    // Handle two accept nodes
+    Graph g;
+    g.addNode(true);
+    g.addNode(false, true);
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, 2);
+    g.addArc(0, 2, 0, 0, 2);
+    g.addArc(1, 2, 0, 0, 2);
+    float expected = std::log(2 * std::exp(2) + std::exp(4));
+    CHECK(forwardScore(g).item() == Approx(expected));
+  }
+
+  {
+    // Handle case where some arcs don't lead to accepting states
+    Graph g;
+    g.addNode(true);
+    g.addNode(false, false);
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, 2);
+    g.addArc(0, 2, 0, 0, 2);
+    CHECK(forwardScore(g).item() == 2.0);
+  }
+
+  {
+    // A more complex test case
+    std::stringstream in(
+        "0 1\n"
+        "3 4\n"
+        "0 1 0 0 2\n"
+        "0 2 1 1 1\n"
+        "1 2 0 0 2\n"
+        "2 3 0 0 1\n"
+        "2 3 1 1 1\n"
+        "1 4 0 0 2\n"
+        "2 4 1 1 3\n"
+        "3 4 0 0 2\n");
+    Graph g = loadTxt(in);
+    CHECK(forwardScore(g).item() == Approx(8.36931));
+  }
+}
+
+TEST_CASE("test viterbi score", "[functions]") {
+  {
+    // Check score of empty graph
+    Graph g;
+    CHECK(viterbiScore(g).item() == -std::numeric_limits<float>::infinity());
+  }
+
+  {
+    // A simple test case
+    Graph g;
+    g.addNode(true);
+    g.addNode();
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, 1);
+    g.addArc(0, 1, 1, 1, 2);
+    g.addArc(0, 1, 2, 2, 3);
+    g.addArc(1, 2, 0, 0, 1);
+    g.addArc(1, 2, 1, 1, 2);
+    g.addArc(1, 2, 2, 2, 3);
+    CHECK(viterbiScore(g).item() == 6.0f);
+  }
+
+  {
+    // Handle two start nodes
+    Graph g;
+    g.addNode(true);
+    g.addNode(true);
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, -5);
+    g.addArc(0, 2, 0, 0, 1);
+    g.addArc(1, 2, 0, 0, 2);
+    CHECK(viterbiScore(g).item() == 2.0f);
+  }
+
+  {
+    // Handle two accept nodes
+    Graph g;
+    g.addNode(true);
+    g.addNode(false, true);
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, 2);
+    g.addArc(0, 2, 0, 0, 2);
+    g.addArc(1, 2, 0, 0, 2);
+    CHECK(viterbiScore(g).item() == 4.0f);
+  }
+
+  {
+    // A more complex test case
+    std::stringstream in(
+        "0 1\n"
+        "3 4\n"
+        "0 1 0 0 2\n"
+        "0 2 1 1 1\n"
+        "1 2 0 0 2\n"
+        "2 3 0 0 1\n"
+        "2 3 1 1 1\n"
+        "1 4 0 0 2\n"
+        "2 4 1 1 3\n"
+        "3 4 0 0 2\n");
+    Graph g = loadTxt(in);
+    CHECK(viterbiScore(g).item() == 7.0f);
+  }
+}
+
+TEST_CASE("test viterbi path", "[functions]") {
+  {
+    Graph g;
+
+    // Empty graph gives empty path
+    CHECK(equal(viterbiPath(g), g));
+
+    // Accepting empty string
+    g.addNode(true, true);
+    CHECK(equal(viterbiPath(g), g));
+  }
+
+  {
+    // A simple test case
+    Graph g;
+    g.addNode(true);
+    g.addNode();
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, 1);
+    g.addArc(0, 1, 1, 1, 2);
+    g.addArc(0, 1, 2, 2, 3);
+    g.addArc(1, 2, 0, 0, 1);
+    g.addArc(1, 2, 1, 1, 2);
+    g.addArc(1, 2, 2, 2, 3);
+
+    Graph best;
+    best.addNode(true);
+    best.addNode();
+    best.addNode(false, true);
+    best.addArc(0, 1, 2, 2, 3);
+    best.addArc(1, 2, 2, 2, 3);
+
+    auto path = viterbiPath(g);
+    CHECK(randEquivalent(path, best));
+    CHECK(viterbiScore(path).item() == viterbiScore(g).item());
+  }
+
+  {
+    // Handle a single node.
+    Graph g;
+    g.addNode(true, true);
+
+    Graph best;
+    best.addNode(true, true);
+    auto path = viterbiPath(g);
+    CHECK(randEquivalent(path, best));
+    CHECK(viterbiScore(path).item() == viterbiScore(g).item());
+  }
+
+  {
+    // Handle two start nodes
+    Graph g;
+    g.addNode(true);
+    g.addNode(true);
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, -5);
+    g.addArc(0, 2, 0, 0, 1);
+    g.addArc(1, 2, 0, 0, 2);
+
+    Graph best;
+    best.addNode(true);
+    best.addNode(false, true);
+    best.addArc(0, 1, 0, 0, 2);
+
+    auto path = viterbiPath(g);
+    CHECK(randEquivalent(path, best));
+    CHECK(viterbiScore(path).item() == viterbiScore(g).item());
+  }
+
+  {
+    // Handle two accept nodes
+    Graph g;
+    g.addNode(true);
+    g.addNode(false, true);
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 0, 3);
+    g.addArc(0, 2, 0, 0, 2);
+    g.addArc(1, 2, 0, 0, 2);
+
+    Graph best;
+    best.addNode(true);
+    best.addNode();
+    best.addNode(false, true);
+    best.addArc(0, 1, 0, 0, 3);
+    best.addArc(1, 2, 0, 0, 2);
+
+    auto path = viterbiPath(g);
+    CHECK(randEquivalent(path, best));
+    CHECK(viterbiScore(path).item() == viterbiScore(g).item());
+  }
+
+  {
+    // A more complex test case
+    std::stringstream in(
+        "0 1\n"
+        "3 4\n"
+        "0 1 0 0 2\n"
+        "0 2 1 1 1\n"
+        "1 2 0 0 2\n"
+        "2 3 0 0 1\n"
+        "2 3 1 1 1\n"
+        "1 4 0 0 2\n"
+        "2 4 1 1 3\n"
+        "3 4 0 0 2\n");
+    Graph g = loadTxt(in);
+
+    // There are three options for the best path, the
+    // viterbiPath may return any of them.
+    Graph best1;
+    best1.addNode(true);
+    best1.addNode();
+    best1.addNode();
+    best1.addNode();
+    best1.addNode(false, true);
+    best1.addArc(0, 1, 0, 0, 2);
+    best1.addArc(1, 2, 0, 0, 2);
+    best1.addArc(2, 3, 0, 0, 1);
+    best1.addArc(3, 4, 0, 0, 2);
+
+    Graph best2;
+    best2.addNode(true);
+    best2.addNode();
+    best2.addNode();
+    best2.addNode();
+    best2.addNode(false, true);
+    best2.addArc(0, 1, 0, 0, 2);
+    best2.addArc(1, 2, 0, 0, 2);
+    best2.addArc(2, 3, 1, 1, 1);
+    best2.addArc(3, 4, 0, 0, 2);
+
+    Graph best3;
+    best3.addNode(true);
+    best3.addNode();
+    best3.addNode();
+    best3.addNode(false, true);
+    best3.addArc(0, 1, 0, 0, 2);
+    best3.addArc(1, 2, 0, 0, 2);
+    best3.addArc(2, 3, 1, 1, 3);
+
+    auto path = viterbiPath(g);
+    CHECK(
+        (randEquivalent(path, best1) || randEquivalent(path, best2) ||
+         randEquivalent(path, best3)));
+
+    CHECK(viterbiScore(path).item() == viterbiScore(g).item());
+  }
+}
+
+TEST_CASE("test epsilon composition", "[functions]") {
+  {
+    // Simple test case for output epsilon on first graph
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 0, 0, epsilon, 1.0);
+    g1.addArc(0, 1, 1, 2);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 1, 2, 3);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode(false, true);
+    expected.addArc(0, 0, 0, epsilon, 1.0);
+    expected.addArc(0, 1, 1, 3);
+    CHECK(randEquivalent(compose(g1, g2), expected, 20));
+  }
+
+  {
+    // Simple test case for input epsilon on second graph
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 1, 1, 2);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 1, 2, 3);
+    g2.addArc(1, 1, epsilon, 0, 2.0);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 1, 3);
+    expected.addArc(1, 1, epsilon, 0, 2.0);
+
+    CHECK(randEquivalent(compose(g1, g2), expected));
+  }
+
+  // A series of tests making sure we handle redundant epsilon paths correctly
+  {
+    Graph g1;
+    g1.addNode(true, true);
+    g1.addArc(0, 0, 0, epsilon);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 1, epsilon, 0, 1.0);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode(false, true);
+    expected.addArc(1, 1, 0, epsilon);
+    expected.addArc(0, 1, epsilon, 0, 1.0);
+
+    CHECK(randEquivalent(compose(g1, g2), expected));
+  }
+
+  {
+    Graph g1;
+    g1.addNode(true, true);
+    g1.addArc(0, 0, 0, epsilon);
+
+    Graph g2;
+    g2.addNode(true, true);
+    g2.addArc(0, 0, epsilon, 0);
+
+    Graph expected;
+    expected.addNode(true, true);
+    expected.addNode(false, true);
+    expected.addArc(0, 0, 0, epsilon);
+    expected.addArc(0, 1, epsilon, 0);
+    expected.addArc(1, 1, epsilon, 0);
+
+    CHECK(randEquivalent(compose(g1, g2), expected));
+  }
+
+  {
+    Graph g1;
+    g1.addNode(true, true);
+    g1.addNode(false, true);
+    g1.addArc(0, 1, 0, epsilon);
+    g1.addArc(1, 0, 0, epsilon);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 1, epsilon, 0, 1.0);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode(false, true);
+    expected.addArc(0, 1, epsilon, 0, 1.0);
+    expected.addArc(1, 1, 0, epsilon);
+
+    CHECK(randEquivalent(compose(g1, g2), expected));
+  }
+
+  {
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 1, 0, epsilon);
+    g1.addArc(0, 0, 0, 1);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 1, epsilon, 0);
+    g2.addArc(0, 1, 1, 1);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode();
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 0, 1);
+    expected.addArc(0, 1, epsilon, 0);
+    expected.addArc(1, 2, 0, epsilon);
+
+    CHECK(randEquivalent(compose(g1, g2), expected));
+  }
+
+  {
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 1, 0, epsilon);
+    g1.addArc(0, 1, 0, 1);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 1, epsilon, 0);
+    g2.addArc(0, 0, 1, 1);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode();
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 0, 1);
+    expected.addArc(0, 1, 0, epsilon);
+    expected.addArc(1, 2, epsilon, 0);
+
+    CHECK(randEquivalent(compose(g1, g2), expected));
+  }
+
+  {
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 1, 0, epsilon);
+    g1.addArc(0, 1, 0, 1);
+    g1.addArc(0, 0, 1, 0);
+
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 1, epsilon, 0);
+    g2.addArc(0, 0, 1, 0);
+    g2.addArc(0, 1, 0, 1);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode();
+    expected.addNode();
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 1, 1);
+    expected.addArc(0, 1, epsilon, 0);
+    expected.addArc(0, 2, 0, 0);
+    expected.addArc(2, 3, epsilon, 0);
+    expected.addArc(1, 3, 0, epsilon);
+
+    CHECK(randEquivalent(compose(g1, g2), expected));
+  }
+
+  {
+    // This test case is taken from "Weighted Automata Algorithms", Mehryar
+    // Mohri, https://cs.nyu.edu/~mohri/pub/hwa.pdf Section 5.1, Figure 7
+    std::unordered_map<std::string, int> symbols = {
+        {"a", 0}, {"b", 1}, {"c", 2}, {"d", 3}, {"e", 4}};
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode();
+    g1.addNode();
+    g1.addNode();
+    g1.addNode(false, true);
+    g1.addArc(0, 1, symbols["a"], symbols["a"]);
+    g1.addArc(1, 2, symbols["b"], epsilon);
+    g1.addArc(2, 3, symbols["c"], epsilon);
+    g1.addArc(3, 4, symbols["d"], symbols["d"]);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode();
+    g2.addNode();
+    g2.addNode(false, true);
+    g2.addArc(0, 1, symbols["a"], symbols["d"]);
+    g2.addArc(1, 2, epsilon, symbols["e"]);
+    g2.addArc(2, 3, symbols["d"], symbols["a"]);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode();
+    expected.addNode();
+    expected.addNode();
+    expected.addNode(false, true);
+    expected.addArc(0, 1, symbols["a"], symbols["d"]);
+    expected.addArc(1, 2, symbols["b"], symbols["e"]);
+    expected.addArc(2, 3, symbols["c"], epsilon);
+    expected.addArc(3, 4, symbols["d"], symbols["a"]);
+
+    CHECK(randEquivalent(compose(g1, g2), expected));
+  }
+
+  {
+    // Test multiple input/output epsilon transitions per node
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 0, 1, epsilon, 1.1);
+    g1.addArc(0, 1, 2, epsilon, 2.1);
+    g1.addArc(0, 1, 3, epsilon, 3.1);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 1, epsilon, 3, 2.1);
+    g2.addArc(0, 1, 1, 2);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode(false, true);
+    expected.addArc(0, 0, 1, epsilon, 1.1);
+    expected.addArc(0, 1, 2, 3, 4.2);
+    expected.addArc(0, 1, 3, 3, 5.2);
+
+    CHECK(randEquivalent(compose(g1, g2), expected));
+  }
+
+  {
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addNode();
+    g1.addArc(0, 1, 0);
+    g1.addArc(0, 2, epsilon);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode();
+    g2.addNode(false, true);
+    g2.addArc(0, 1, epsilon);
+    g2.addArc(1, 2, 0);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 0);
+    CHECK(randEquivalent(compose(g1, g2), expected));
+  }
+
+  {
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode();
+    g1.addNode(false, true);
+    g1.addArc(0, 1, epsilon, epsilon, 1);
+    g1.addArc(0, 2, 0, 0, 3);
+    g1.addArc(1, 2, 0, 0, 1);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode();
+    g2.addNode(false, true);
+    g2.addArc(0, 1, epsilon, epsilon, 2);
+    g2.addArc(1, 2, 0, 0, 2);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode();
+    expected.addNode();
+    expected.addNode(false, true);
+    expected.addArc(0, 1, epsilon, epsilon, 3);
+    expected.addArc(0, 2, epsilon, epsilon, 2);
+    expected.addArc(1, 3, 0, 0, 3);
+    expected.addArc(2, 3, 0, 0, 5);
+    CHECK(randEquivalent(compose(g1, g2), expected));
+  }
+}
+
+TEST_CASE("test concat", "[functions]") {
+  {
+    // Empty string language
+    Graph g;
+    g.addNode(true, true);
+
+    CHECK(equal(concat({}), g));
+    CHECK(randEquivalent(concat(g, g), g));
+    CHECK(randEquivalent(concat({g, g, g}), g));
+  }
+  {
+    // Singleton
+    Graph g;
+    g.addNode(true);
+    g.addNode(false, true);
+    g.addArc(0, 1, 1);
+    CHECK(equal(concat({g}), g));
+  }
+
+  {
+    // Empty language
+    Graph g;
+    g.addNode();
+    CHECK(randEquivalent(concat(g, g), Graph{}));
+    CHECK(randEquivalent(concat({g, g, g}), Graph{}));
+  }
+
+  {
+    // Concat {0} and {1} to get {01}
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 1, 0);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 1, 1);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode();
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 0);
+    expected.addArc(1, 2, 1);
+
+    CHECK(randEquivalent(concat(g1, g2), expected));
+  }
+
+  {
+    // Concat {0, 1} and {2, 3} to get {02, 03, 12, 13}
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addNode(false, true);
+    g1.addArc(0, 1, 0);
+    g1.addArc(0, 2, 1);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 2, 2);
+    g2.addArc(1, 2, 3);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode();
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 0);
+    expected.addArc(0, 1, 1);
+    expected.addArc(1, 2, 2);
+    expected.addArc(1, 2, 3);
+
+    CHECK(randEquivalent(concat(g1, g2), expected));
+  }
+}
+
+TEST_CASE("test closure", "[functions]") {
+  {
+    // Empty graph
+    Graph expected;
+    expected.addNode(true, true);
+    CHECK(equal(closure(Graph{}), expected));
+  }
+
+  {
+    // Multi-start, multi-accept
+    Graph g;
+    g.addNode(true);
+    g.addNode(true);
+    g.addNode(false, true);
+    g.addNode(false, true);
+    g.addArc(0, 2, 0, 0, 0.0);
+    g.addArc(0, 3, 1, 2, 2.1);
+    g.addArc(1, 2, 0, 1, 1.0);
+    g.addArc(1, 3, 1, 3, 3.1);
+
+    Graph expected;
+    expected.addNode(true, true);
+    expected.addNode();
+    expected.addNode();
+    expected.addNode(false, true);
+    expected.addNode(false, true);
+    expected.addArc(0, 1, epsilon);
+    expected.addArc(0, 2, epsilon);
+    expected.addArc(1, 3, 0, 0, 0.0);
+    expected.addArc(1, 4, 1, 2, 2.1);
+    expected.addArc(2, 3, 0, 1, 1.0);
+    expected.addArc(2, 4, 1, 3, 3.1);
+    expected.addArc(3, 1, epsilon);
+    expected.addArc(3, 2, epsilon);
+    expected.addArc(4, 1, epsilon);
+    expected.addArc(4, 2, epsilon);
+
+    CHECK(randEquivalent(closure(g), expected));
+  }
+}
+
+TEST_CASE("test union", "[functions]") {
+  {
+    // Empty graph
+    CHECK(equal(union_({}), Graph{}));
+  }
+
+  {
+    // Check single graph is a no-op
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 1, 1);
+    CHECK(equal(union_({g1}), g1));
+  }
+
+  {
+    // Simple union
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 1, 1);
+
+    Graph g2;
+    g2.addNode(true);
+    g2.addNode(false, true);
+    g2.addArc(0, 1, 0);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode(true);
+    expected.addNode(false, true);
+    expected.addNode(false, true);
+    expected.addArc(0, 2, 1);
+    expected.addArc(1, 3, 0);
+    CHECK(isomorphic(union_({g1, g2}), expected));
+  }
+
+  {
+    // Check adding with an empty graph works
+    Graph g1;
+    g1.addNode(true);
+    g1.addNode(false, true);
+    g1.addArc(0, 1, 1);
+
+    Graph g2;
+
+    Graph g3;
+    g3.addNode(true, true);
+    g3.addArc(0, 0, 2);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode(false, true);
+    expected.addNode(true, true);
+    expected.addArc(0, 1, 1);
+    expected.addArc(2, 2, 2);
+    CHECK(isomorphic(union_({g1, g2, g3}), expected));
+  }
+}
+
+TEST_CASE("test remove", "[functions]") {
+  {
+    Graph g(false);
+    g.addNode(true);
+    g.addNode();
+    g.addNode(false, true);
+    g.addArc(0, 1, epsilon);
+    g.addArc(1, 2, 0);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 0);
+    CHECK(equal(remove(g, epsilon), expected));
+
+    // Check gradient status propagates correctly
+    CHECK(remove(g, epsilon).calcGrad() == false);
+  }
+
+  {
+    // Removing other labels works
+    Graph g;
+    g.addNode(true);
+    g.addNode();
+    g.addNode(false, true);
+    g.addArc(0, 1, 2, 1);
+    g.addArc(1, 2, 0, 1);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 0, 1);
+    CHECK(equal(remove(g, 2, 1), expected));
+  }
+
+  {
+    // No-op on graph without epsilons
+    Graph g;
+    g.addNode(true);
+    g.addNode(false, true);
+    g.addArc(0, 1, 0, 1);
+    g.addArc(0, 1, 1, 1);
+    CHECK(equal(remove(g), g));
+  }
+
+  {
+    // Epsilon only transitions into accepting state
+    Graph g;
+    g.addNode(true);
+    g.addNode();
+    g.addNode();
+    g.addNode(false, true);
+    g.addArc(0, 1, 0);
+    g.addArc(0, 2, 1);
+    g.addArc(1, 3, epsilon);
+    g.addArc(2, 3, epsilon);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode(false, true);
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 0);
+    expected.addArc(0, 2, 1);
+    CHECK(equal(remove(g), expected));
+  }
+
+  {
+    // Only remove an arc, no removed nodes
+    Graph g;
+    g.addNode(true);
+    g.addNode();
+    g.addNode();
+    g.addNode(false, true);
+    g.addArc(0, 1, epsilon);
+    g.addArc(0, 2, 1);
+    g.addArc(2, 1, 0);
+    g.addArc(1, 3, 1);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode();
+    expected.addNode();
+    expected.addNode(false, true);
+    expected.addArc(0, 2, 1);
+    expected.addArc(2, 1, 0);
+    expected.addArc(1, 3, 1);
+    expected.addArc(0, 3, 1);
+    CHECK(isomorphic(remove(g), expected));
+  }
+
+  {
+    // Successive epsilons
+    Graph g;
+    g.addNode(true);
+    g.addNode();
+    g.addNode();
+    g.addNode();
+    g.addNode(false, true);
+    g.addArc(0, 1, 0);
+    g.addArc(1, 2, epsilon);
+    g.addArc(2, 3, epsilon);
+    g.addArc(2, 4, 1);
+    g.addArc(3, 4, 2);
+    g.addArc(1, 4, 0);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode();
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 0);
+    expected.addArc(1, 2, 0);
+    expected.addArc(1, 2, 1);
+    expected.addArc(1, 2, 2);
+    CHECK(equal(remove(g), expected));
+  }
+
+  // Multiple interior removals
+  {
+    Graph g;
+    g.addNode(true);
+    g.addNode();
+    g.addNode();
+    g.addNode();
+    g.addNode(false, true);
+    g.addArc(0, 1, epsilon);
+    g.addArc(1, 2, epsilon);
+    g.addArc(2, 3, 0);
+    g.addArc(3, 4, 0);
+
+    Graph expected;
+    expected.addNode(true);
+    expected.addNode();
+    expected.addNode(false, true);
+    expected.addArc(0, 1, 0);
+    expected.addArc(1, 2, 0);
+    CHECK(equal(remove(g), expected));
+  }
+}
