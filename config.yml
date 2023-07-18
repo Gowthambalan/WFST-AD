@@ -1,0 +1,106 @@
+Sure, here is the code with a different version and name:
+
+```
+version: 2.2
+
+orbs:
+  win: circleci/windows@2.5.0
+
+jobs:
+  ubuntu_gcc_8_3_0:
+    docker:
+      - image: cimg/base:2022.01
+    steps:
+      - checkout
+      - run:
+          name: "Install Build Dependencies"
+          command: |
+            sudo apt -y update && \
+            sudo apt -y install build-essential python3-dev python3-pip cmake
+      - run:
+          name: "Build WFST-AD"
+          command: |
+            mkdir build && cd build && \
+            cmake .. \
+                  -DBUILD_SHARED_LIBS=ON \
+                  -DGTN_BUILD_PYTHON_BINDINGS=ON && \
+            make -j2
+      - run:
+          name: "Install Python Bindings"
+          command: |
+            pip3 install packaging && \
+            pip3 install numpy && \
+            cd bindings/python && \
+            python3 setup.py install --user --prefix=
+      - run:
+          name: "Run C++ and Python Binding Tests"
+          command: |
+            cd build && make test
+
+  macos_clang_12:
+    macos:
+      xcode: 12.3.1
+    environment:
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+    shell: /bin/bash -eux -o pipefail
+    steps:
+      - checkout
+      - run:
+          name: "Install Build Dependencies"
+          command: |
+            brew install cmake
+      - run:
+          name: "Build WFST-AD"
+          command: |
+            mkdir build && cd build && \
+            cmake .. \
+                  -DBUILD_SHARED_LIBS=ON \
+                  -DGTN_BUILD_PYTHON_BINDINGS=ON && \
+            make -j2
+      - run:
+          name: "Install Python Bindings"
+          command: |
+            pip3 install packaging && \
+            pip3 install numpy && \
+            cd bindings/python && \
+            python3 setup.py install --user --prefix=
+      - run:
+          name: "Run C++ and Python Binding Tests"
+          command: cd build && make test
+
+  windows_msvc_2022:
+    executor:
+      name: win/default
+      shell: bash.exe
+    steps:
+      - checkout
+      - run:
+          name: "Install Build Dependencies"
+          command: |
+            choco install cmake python3 -y
+      - run:
+          name: "Build WFST-AD"
+          command: |
+            export PATH="$PATH:/c/Program Files/CMake/bin" && \
+            mkdir build && cd build && \
+            cmake .. \
+                  -DBUILD_SHARED_LIBS=OFF \
+                  -DGTN_BUILD_PYTHON_BINDINGS=OFF \
+                  -DCMAKE_WINDOWS_EXPORT_ALL_SYMBOLS=ON && \
+            cmake --build . --parallel 2
+
+workflows:
+  version: 2
+  build-and-test:
+    jobs:
+      - ubuntu_gcc_8_3_0
+      - macos_clang_12
+      - windows_msvc_2022
+```
+
+
+
+
+
+
+
