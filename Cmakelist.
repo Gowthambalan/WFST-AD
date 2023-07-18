@@ -1,0 +1,94 @@
+cmake_minimum_required(VERSION 3.5.1)
+
+project(my_project LANGUAGES CXX)
+
+
+# ----------------------------- Setup -----------------------------
+set(CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
+set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+find_package(CUDA 9.0)
+
+# ----------------------------- Configuration -----------------------------
+option(MY_PROJECT_BUILD_TESTS "Build tests for my_project" ON)
+option(MY_PROJECT_BUILD_BENCHMARKS "Build benchmarks for my_project" ON)
+option(MY_PROJECT_BUILD_EXAMPLES "Build examples for my_project" ON)
+option(MY_PROJECT_BUILD_CUDA "Build cuda backend for my_project" <span class="math-inline">\{CUDA\_FOUND\}\)
+option\(MY\_PROJECT\_BUILD\_PYTHON\_BINDINGS "Build python bindings for my\_project" OFF\)
+\# \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\- Dependencies \-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-\-
+set\(THREADS\_PREFER\_PTHREAD\_FLAG ON\)
+find\_package\(Threads REQUIRED\)
+if \(MY\_PROJECT\_<0\>BUILD\_CUDA\)
+include\_directories\(</span>{CUDA_INCLUDE_DIRS})
+  add_definitions(-D_CUDA_)
+  enable_language(CUDA)
+  set(CMAKE_CUDA_STANDARD 14)
+  set(CMAKE_CUDA_STANDARD_REQUIRED ON)
+endif()
+
+# ----------------------------- Lib -----------------------------
+# Core lib sources -- maybe make me a submodule eventually
+include(${CMAKE_SOURCE_DIR}/my_project/CMakeLists.txt)
+
+if (MY_PROJECT_BUILD_CUDA)
+  # TODO, better way to set these arch flags
+  add_compile_options(
+    <span class="math-inline"><</span><COMPILE_LANGUAGE:CUDA>:-arch=sm_80>
+    <span class="math-inline"><</span><COMPILE_LANGUAGE:CUDA>:-default-stream=per-thread>
+    <span class="math-inline"><</span><COMPILE_LANGUAGE:CUDA>:--extended-lambda>)
+endif()
+
+# Main lib
+add_library(
+  my_project
+  <span class="math-inline">\{MY\_PROJECT\_SOURCES\}
+\)
+include\(</span>{CMAKE_SOURCE_DIR}/my_project/cuda/CMakeLists.txt)
+if (MY_PROJECT_BUILD_CUDA)
+  target_sources(my_project PRIVATE ${MY_PROJECT_CUDA_SOURCES})
+else()
+  target_sources(my_project PRIVATE <span class="math-inline">\{MY\_PROJECT\_NO\_CUDA\_SOURCES\}\)
+endif\(\)
+add\_subdirectory\(</span>{PROJECT_SOURCE_DIR}/my_project)
+
+target_link_libraries(my_project PUBLIC ${CMAKE_THREAD_LIBS_INIT})
+
+target_include_directories(
+  my_project
+  PUBLIC
+  <span class="math-inline"><BUILD\_INTERFACE\:</span>{PROJECT_SOURCE_DIR}>
+)
+
+# Python Bindings
+if (MY_PROJECT_BUILD_PYTHON_BINDINGS)
+  message(STATUS "Building Python bindings.")
+  include(<span class="math-inline">\{CMAKE\_MODULE\_PATH\}/Buildpybind11\.cmake\)
+include\(</span>{CMAKE_MODULE_PATH}/pybind11Tools.cmake)
+  add_subdirectory(<span class="math-inline">\{PROJECT\_SOURCE\_DIR\}/bindings/python\)
+endif\(\)</1\>
+\# Tests
+if \(MY\_PROJECT\_BUILD\_TESTS\)
+enable\_testing\(\)
+add\_subdirectory\(</span>{PROJECT_SOURCE_DIR}/test)
+endif()
+
+# Benchmarks
+if (MY_PROJECT_BUILD_BENCHMARKS)
+  add_subdirectory(<span class="math-inline">\{PROJECT\_SOURCE\_DIR\}/benchmarks\)
+endif\(\)
+\# Examples
+if \(MY\_PROJECT\_BUILD\_EXAMPLES\)
+add\_subdirectory\(</span>{PROJECT_SOURCE_DIR}/examples)
+endif()
+
+
+# ----------------------------- Installation -----------------------------
+# Installation directories
+set(MY_PROJECT_INSTALL_INC_DIR "include" CACHE PATH "Install path for headers")
+set(MY_PROJECT_INSTALL_INC_DIR_HEADER_LOC <span class="math-inline">\{MY\_PROJECT\_INSTALL\_INC\_DIR\}/my\_project\)
+set\(MY\_PROJECT\_INSTALL\_LIB\_DIR "lib" CACHE PATH "Install path for libraries"\)
+set\(MY\_PROJECT\_INSTALL\_BIN\_DIR "bin" CACHE PATH "Install path for binaries"\)
+\# Other assets
+set\(MY\_PROJECT\_INSTALL\_ASSETS\_BASE\_DIR "share/my\_project"\)
+set\(MY\_PROJECT\_INSTALL\_CMAKE\_DIR "</span>{MY_PROJECT_INSTALL_ASSETS_
